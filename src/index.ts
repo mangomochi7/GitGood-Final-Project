@@ -23,6 +23,50 @@ const websocketPort = parseInt(process.env.WEBSOCKET_PORT || "3456");
 
 const server = http.createServer(app);
 
+// Create screenshots directory if it doesn't exist
+const screenshotsDir = path.join(__dirname, "..", "screenshots");
+if (!fs.existsSync(screenshotsDir)) {
+  fs.mkdirSync(screenshotsDir, { recursive: true });
+  console.log(`Created screenshots directory: ${screenshotsDir}`);
+}
+
+// Function to save PNG screenshot to file
+function savePngScreenshot(
+  base64Data: string,
+  participant: { id: number; name: string | null },
+  timestamp: { relative: number; absolute: string },
+  type: "webcam" | "screenshare"
+) {
+  try {
+    // Remove data URL prefix if present (data:image/png;base64,)
+    const base64Clean = base64Data.replace(/^data:image\/png;base64,/, "");
+    
+    // Convert base64 to buffer
+    const buffer = Buffer.from(base64Clean, "base64");
+    
+    // Create filename with participant info and timestamp
+    const participantName = participant.name || `participant_${participant.id}`;
+    const safeParticipantName = participantName.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const timestampStr = new Date(timestamp.absolute).toISOString().replace(/[:.]/g, "-");
+    const filename = `${safeParticipantName}_${type}_${timestampStr}_${timestamp.relative}.png`;
+    const filepath = path.join(screenshotsDir, filename);
+    
+    // Save the PNG file
+    fs.writeFileSync(filepath, buffer);
+    
+    const savedMsg = `Saved PNG screenshot: ${filename} (${buffer.length} bytes)`;
+    console.log(savedMsg);
+    broadcastToUIClients(savedMsg);
+    
+    return filepath;
+  } catch (error: any) {
+    const errorMsg = `Error saving PNG screenshot: ${error.message}`;
+    console.error(errorMsg);
+    broadcastToUIClients(errorMsg);
+    return null;
+  }
+}
+
 // --- UI WebSocket Server Setup ---
 // This WebSocket server is for sending log messages from this backend to the browser UI.
 const uiWss = new WebSocket.Server({ server, path: "/ui-updates" });
@@ -84,7 +128,7 @@ const sendBotHandler: AsyncRequestHandler = async (req, res, next) => {
   }
 
   try {
-    const recallApiUrl = "https://us-east-1.recall.ai/api/v1/bot"; // Recall.ai endpoint to create a bot
+    const recallApiUrl = "https://us-west-2.recall.ai/api/v1/bot"; // Recall.ai endpoint to create a bot
 
     // Prepare the payload for the Recall.ai API
     const payload: any = {
@@ -166,11 +210,21 @@ recallBotWss.on("connection", (ws) => {
         const videoMsg = `Received separate participant video (video_separate_png.data) for: ${
           participantInfo.name || participantInfo.id
         } (${videoEvent.data.data.type})`;
+        
+        // Save the PNG screenshot to file
+        const savedPath = savePngScreenshot(
+          videoEvent.data.data.buffer,
+          participantInfo,
+          videoEvent.data.data.timestamp,
+          videoEvent.data.data.type
+        );
+        
         broadcastToUIClients(videoMsg, {
           participant: participantInfo,
           type: videoEvent.data.data.type,
           timestamp: videoEvent.data.data.timestamp,
           bufferSize: videoEvent.data.data.buffer.length,
+          savedPath: savedPath,
         });
       } else if (wsMessage.event === "audio_separate_raw.data") {
         const separateAudioEvent = wsMessage as AudioSeparateRawDataEvent;
@@ -232,5 +286,8 @@ server.listen(expressPort, () => {
   broadcastToUIClients(serverStartMsg);
   broadcastToUIClients(
     `Connect your Recall.ai bot WebSocket to: ws://YOUR_PUBLIC_IP_OR_NGROK_URL:${websocketPort}`
+  );
+  broadcastToUIClients(
+    `Video screenshots will be saved to: ${screenshotsDir}`
   );
 });
