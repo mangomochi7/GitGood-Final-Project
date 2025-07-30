@@ -44,6 +44,7 @@ while camera_video.isOpened():
         left_shoulder = db.get_left_shoulder()
         right_shoulder = db.get_right_shoulder()
         mouth = db.get_mouth()
+        shoulder_angle = db.get_shoulder_angle()
         status = db.get_status()
         status2 = db.get_status2()
 
@@ -59,13 +60,17 @@ while camera_video.isOpened():
             text = f"Mouth Center: x: {int(mouth[0])}, y: {int(mouth[1])}"
             cv2.putText(frame, text, (30, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
+        if shoulder_angle:
+            text = f"Shoulder Angle: {int(shoulder_angle)}"
+            cv2.putText(frame, text, (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
         if status:
             text = f"Posture: {status}"
-            cv2.putText(frame, text, (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(frame, text, (30, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         if status2:
             text = f"Posture2: {status2}"
-            cv2.putText(frame, text, (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(frame, text, (30, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         left_mouth = results_pose.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_LEFT]
         right_mouth = results_pose.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_RIGHT]

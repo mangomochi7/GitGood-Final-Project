@@ -1,6 +1,8 @@
 import mediapipe as mp
 import math
 import numpy as np
+
+import posture_processing
 from utils import *
 from posture_processing import *
 
@@ -25,13 +27,16 @@ class database:
         right_mouth = give_coords((pose_landmarks.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_RIGHT]), frame)
         self.mouth = midpoint(left_mouth, right_mouth)
 
-        check_posture(self)
+        posture_processing.check_posture(self)
         
     def get_left_shoulder(self):
         return self.left_shoulder
 
     def get_right_shoulder(self):
         return self.right_shoulder
+
+    def get_shoulder_angle(self):
+        return self.shoulder_angle
 
     def get_mouth(self):
         return self.mouth
