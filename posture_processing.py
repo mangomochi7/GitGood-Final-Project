@@ -5,21 +5,39 @@ from utils import *
 import mediapipe as mp
 from database import database
 
+SHOULDER_ANGLE_THRESHOLD = 15
+THRESHOLD_RATIO = 0.4
+
 def check_posture(user_database: database):
     issues_list  = []
     nice_list = []
 
-    left_shoulder = user_database.left_shoulder
-    right_shoulder = user_database.right_shoulder
-    mouth = user_database.mouth
+    left_shoulder = user_database.get_left_shoulder()
+    right_shoulder = user_database.get_right_shoulder()
+    mouth = user_database.get_mouth()
 
     shoulder_angle = user_database.shoulder_angle
-
-    if shoulder_angle  > 10:
-        issues_list.append("tilted shoulders")
+    #shoulder tilt stuff
+    if shoulder_angle  > SHOULDER_ANGLE_THRESHOLD:
+        user_database.set_status("tilted shoulders")
     else:
-        nice_list.append("shoulders are level")
+        user_database.set_status("shoulders are level")
     
+    #mouth to shoulder distance
+    shoulder_mid = midpoint(left_shoulder, right_shoulder)
+    chin_distance = distance(mouth, shoulder_mid)
+    shoulder_distance = distance(left_shoulder, right_shoulder)
+
+    dist_ratio = chin_distance/shoulder_distance
+
+    if dist_ratio < THRESHOLD_RATIO:
+        user_database.set_status2("Chin too close to the shoulder line! :( Adjust your chin please!!!")
+    else:
+        user_database.set_status2("Chin and shoulder are at a healthy distance. :D Nice!")
+
+    
+
+        
 
 
     
