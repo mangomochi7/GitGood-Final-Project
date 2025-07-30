@@ -14,14 +14,6 @@ pose_video = mp_pose.Pose(
     min_tracking_confidence=0.5
 )
 
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    static_image_mode=True,  # This is for single image processing
-    max_num_faces=1,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
-
 mp_drawing = mp.solutions.drawing_utils 
 
 # Initialize camera input
@@ -54,7 +46,6 @@ while camera_video.isOpened():
     
     # Process the frame & detect landmarks
     results_pose = pose_video.process(rgb_frame)
-    results_face = face_mesh.process(rgb_frame)
 
     if results_pose.pose_landmarks:
         mp_drawing.draw_landmarks(frame, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
@@ -68,23 +59,17 @@ while camera_video.isOpened():
         right_shoulder_text = f"Right shoulder x: {right_shoulder_coords[0]} y: {right_shoulder_coords[1]} z: {right_shoulder_coords[2]}"
         cv2.putText(frame, left_shoulder_text, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
         cv2.putText(frame, right_shoulder_text, (50,100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
-    
-    if results_face.multi_face_landmarks:
-    
-        for face_landmarks in results_face.multi_face_landmarks:
-            mp_drawing.draw_landmarks(frame, face_landmarks, mp_face_mesh.FACEMESH_CONTOURS)
-            
-            left_mouth = face_landmarks.landmark[mp_face_mesh.FaceMeshLandmark.MOUTH_LEFT]
-            right_mouth = face_landmarks.landmark[mp_face_mesh.FaceMeshLandmark.MOUTH_RIGHT]
-            
-            left_mouth_coords = give_coords(left_mouth, frame)
-            right_mouth_coords = give_coords(right_mouth, frame)
-
-            left_mouth_text = f"left mouth x: {left_mouth_coords[0]} y: {left_mouth_coords[1]} z: {left_mouth_coords[2]}"
-            right_mouth_text = f"Right mouth x: {right_mouth_coords[0]} y: {right_mouth_coords[1]} z: {right_mouth_coords[2]}"
         
-            cv2.putText(frame, left_mouth_text, (50,150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
-            cv2.putText(frame, right_mouth_text, (50,200), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
+        left_mouth = results_pose.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_LEFT]
+        right_mouth = results_pose.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_RIGHT]
+        left_mouth_coords = give_coords(left_mouth, frame)
+        right_mouth_coords = give_coords(right_mouth, frame)
+
+        left_mouth_text = f"left mouth x: {left_mouth_coords[0]} y: {left_mouth_coords[1]} z: {left_mouth_coords[2]}"
+        right_mouth_text = f"Right mouth x: {right_mouth_coords[0]} y: {right_mouth_coords[1]} z: {right_mouth_coords[2]}"
+        
+        cv2.putText(frame, left_mouth_text, (50,150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
+        cv2.putText(frame, right_mouth_text, (50,200), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,225,0), 2)
             
 
     # Display the processed frame
