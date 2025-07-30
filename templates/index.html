@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Recall.ai Starter Kit</title>
-    <link rel="stylesheet" href="style.css" />
+    <title>Recall.ai Flask Starter Kit</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <style>
       .event-group-label {
         font-weight: 600;
@@ -18,21 +19,23 @@
         margin-left: 20px;
         margin-bottom: 5px;
       }
+      .log-timestamp {
+        color: #666;
+        margin-right: 10px;
+      }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Recall.ai API Starter Kit</h1>
+      <h1>Recall.ai Flask API Starter Kit</h1>
 
       <div class="main-layout-columns">
         <div class="form-column">
           <h2>Send Bot to Meeting</h2>
           <form id="sendBotForm">
             <div class="form-group">
-              <label for="meetingUrl"
-                >https://meet.google.com/oim-zcgs-iwe</label
-              >
-              <input type="url" id="meetingUrl" name="meetingUrl" required />
+              <label for="meetingUrl">Meeting URL:</label>
+              <input type="url" id="meetingUrl" name="meetingUrl" placeholder="https://meet.google.com/your-meeting-id" required />
             </div>
             <div class="form-group">
               <label for="botName">Bot Name (Optional):</label>
@@ -141,7 +144,6 @@
                   id="websocketUrl"
                   name="websocketUrl"
                   placeholder="wss://your-ngrok-domain.ngrok-free.app"
-                  required
                 />
               </div>
             </div>
@@ -163,15 +165,48 @@
     </div>
 
     <script>
+      // Initialize Socket.IO connection
+      const socket = io();
+      
       const sendBotForm = document.getElementById("sendBotForm");
       const realTimeLog = document.getElementById("realTimeLog");
       const websocketUrlInput = document.getElementById("websocketUrl");
-      const toggleAutoScrollBtn = document.getElementById(
-        "toggleAutoScrollBtn"
-      );
+      const toggleAutoScrollBtn = document.getElementById("toggleAutoScrollBtn");
       const rtEventCheckboxes = document.querySelectorAll(".rt-event-checkbox");
 
       let autoScrollEnabled = true;
+
+      // Handle Socket.IO messages
+      socket.on('ui_update', function(message) {
+        const timestamp = `[${new Date(message.timestamp || Date.now()).toLocaleTimeString()}]`;
+        let logText = message.log;
+        if (message.data) {
+          logText += ` ${typeof message.data === "object" ? JSON.stringify(message.data, null, 2) : message.data}`;
+        }
+
+        const logEntry = document.createElement("div");
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "log-timestamp";
+        timeSpan.textContent = timestamp;
+
+        const textNode = document.createTextNode(logText);
+
+        logEntry.appendChild(timeSpan);
+        logEntry.appendChild(textNode);
+
+        realTimeLog.appendChild(logEntry);
+        if (autoScrollEnabled) {
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+      });
+
+      socket.on('connect', function() {
+        console.log('Connected to Flask-SocketIO server');
+      });
+
+      socket.on('disconnect', function() {
+        console.log('Disconnected from Flask-SocketIO server');
+      });
 
       toggleAutoScrollBtn.addEventListener("click", () => {
         autoScrollEnabled = !autoScrollEnabled;
@@ -204,8 +239,7 @@
         });
 
         if (eventsToRequest.length > 0 && !wsUrl) {
-          const errorMsg =
-            "Error: Public WebSocket URL is required when subscribing to real-time events.";
+          const errorMsg = "Error: Public WebSocket URL is required when subscribing to real-time events.";
           console.error(errorMsg);
           const errorEntry = document.createElement("div");
           errorEntry.textContent = `[CLIENT VALIDATION] ${errorMsg}`;
@@ -243,111 +277,31 @@
             },
           ];
         } else if (wsUrl && wsUrl.trim() !== "") {
-          console.log(
-            "WebSocket URL provided but no real-time events selected. Ignoring WebSocket URL for this request."
-          );
+          console.log("WebSocket URL provided but no real-time events selected. Ignoring WebSocket URL for this request.");
         }
 
         console.log("Sending payload:", JSON.stringify(payload, null, 2));
 
         try {
-          await fetch("/send-bot", {
+          const response = await fetch("/send-bot", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify(payload),
           });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error("Error response:", errorData);
+          }
         } catch (error) {
           console.error("Error sending bot (fetch failed):", error);
           const errorEntry = document.createElement("div");
-          errorEntry.textContent =
-            "[NETWORK ERROR] Failed to send request to /send-bot. Check server console.";
+          errorEntry.textContent = "[NETWORK ERROR] Failed to send request to /send-bot. Check server console.";
           realTimeLog.appendChild(errorEntry);
         }
       });
-
-      const uiSocketProtocol =
-        window.location.protocol === "https:" ? "wss:" : "ws:";
-      const uiSocket = new WebSocket(
-        `${uiSocketProtocol}//${window.location.host}/ui-updates`
-      );
-
-      uiSocket.onopen = () => {
-        const initialEntry = document.createElement("div");
-        initialEntry.textContent =
-          "Connected to server for real-time updates.\n";
-        realTimeLog.appendChild(initialEntry);
-        console.log("UI WebSocket connected");
-        if (autoScrollEnabled) {
-          realTimeLog.scrollTop = realTimeLog.scrollHeight;
-        }
-      };
-
-      uiSocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          const timestamp = `[${new Date(
-            message.timestamp || Date.now()
-          ).toLocaleTimeString()}]`;
-          let logText = message.log;
-          if (message.data) {
-            logText += ` ${
-              typeof message.data === "object"
-                ? JSON.stringify(message.data, null, 2)
-                : message.data
-            }`;
-          }
-
-          const logEntry = document.createElement("div");
-          const timeSpan = document.createElement("span");
-          timeSpan.className = "log-timestamp";
-          timeSpan.textContent = timestamp;
-
-          const textNode = document.createTextNode(logText);
-
-          logEntry.appendChild(timeSpan);
-          logEntry.appendChild(textNode);
-
-          realTimeLog.appendChild(logEntry);
-          if (autoScrollEnabled) {
-            realTimeLog.scrollTop = realTimeLog.scrollHeight;
-          }
-        } catch (e) {
-          console.error(
-            "Error processing UI WebSocket message:",
-            e,
-            event.data
-          );
-          const rawEntry = document.createElement("div");
-          rawEntry.textContent = `[RAW] ${event.data}`;
-          realTimeLog.appendChild(rawEntry);
-          if (autoScrollEnabled) {
-            realTimeLog.scrollTop = realTimeLog.scrollHeight;
-          }
-        }
-      };
-
-      uiSocket.onerror = (error) => {
-        console.error("UI WebSocket Error:", error);
-        const errorEntry = document.createElement("div");
-        errorEntry.textContent =
-          "Error connecting to real-time log server. Check console.\n";
-        realTimeLog.appendChild(errorEntry);
-        if (autoScrollEnabled) {
-          realTimeLog.scrollTop = realTimeLog.scrollHeight;
-        }
-      };
-
-      uiSocket.onclose = () => {
-        console.log("UI WebSocket disconnected");
-        const closeEntry = document.createElement("div");
-        closeEntry.textContent = "Disconnected from real-time log server.\n";
-        realTimeLog.appendChild(closeEntry);
-        if (autoScrollEnabled) {
-          realTimeLog.scrollTop = realTimeLog.scrollHeight;
-        }
-      };
     </script>
   </body>
 </html>
