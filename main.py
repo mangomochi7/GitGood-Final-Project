@@ -45,8 +45,22 @@ while camera_video.isOpened():
         right_shoulder = db.get_right_shoulder()
         mouth = db.get_mouth()
         shoulder_angle = db.get_shoulder_angle()
-        status = db.get_status()
-        status2 = db.get_status2()
+        status_tilt = db.get_status_tilt()
+        status_sm_dist = db.get_status_sm_dist()
+        last_status_tilt = db.get_last_status_tilt()
+        last_status_sm_dist = db.get_last_status_sm_dist()
+
+        if db.get_status_tilt() != db.get_last_status_tilt() or db.get_status_sm_dist() != db.get_last_status_sm_dist():
+            if not db.get_triggered():
+                db.set_triggered(True)
+                db.update_time()  # Start timing the change
+            elif time.time() - db.get_time() > 5:
+                db.update_last_status()
+                print(db.get_main_status())
+                db.set_triggered(False)
+        else:
+            db.set_triggered(False)
+        
 
         if left_shoulder:
             text = f"Left Shoulder: x: {int(left_shoulder[0])}, y: {int(left_shoulder[1])}"
@@ -64,12 +78,12 @@ while camera_video.isOpened():
             text = f"Shoulder Angle: {int(shoulder_angle)}"
             cv2.putText(frame, text, (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        if status:
-            text = f"Posture: {status}"
+        if status_tilt:
+            text = f"Tilt - Last: {last_status_tilt} Current: {status_tilt}"
             cv2.putText(frame, text, (30, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        if status2:
-            text = f"Posture2: {status2}"
+        if status_sm_dist:
+            text = f"Dist - Last: {last_status_sm_dist} Current: {status_sm_dist}"
             cv2.putText(frame, text, (30, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         left_mouth = results_pose.pose_landmarks.landmark[mp_pose.PoseLandmark.MOUTH_LEFT]

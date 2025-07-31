@@ -1,20 +1,18 @@
 import math
 import numpy as np
 
-def calculateAngle(landmark1, landmark2):  
+def calculateAngle(landmark1, landmark2):
+    # landmarks coordinates
+    x1, y1 = landmark1
+    x2, y2 = landmark2
 
-        #landmarks coordinates
-        x1, y1 = landmark1
-        x2, y2 = landmark2
+    radians = np.arctan2(y2 - y1, x2 - x1)
+    angle = abs(np.degrees(radians))
 
-        # Calculate the angle between the three points
-        angle = np.arctan((y2-y1)/(x2-x1))
+    if angle > 90:
+        angle = 180 - angle  # Normalizes to range 0–90 (cos otherwise perfect posture will be ~180)
 
-        # Check if the angle is less than zero
-        if angle < 0:
-            angle += 360
-
-        return angle
+    return angle
     
 def give_coords(landmark, frame):
     h, w, _ = frame.shape
