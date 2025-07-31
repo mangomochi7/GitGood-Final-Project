@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recall.ai Starter Kit</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      .event-group-label {
+        font-weight: 600;
+        margin-top: 15px;
+        margin-bottom: 5px;
+        display: block;
+        color: #333;
+        font-size: 1.1em;
+      }
+      .event-item {
+        margin-left: 20px;
+        margin-bottom: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Recall.ai API Starter Kit</h1>
+
+      <div class="main-layout-columns">
+        <div class="form-column">
+          <h2>Send Bot to Meeting</h2>
+          <form id="sendBotForm">
+            <div class="form-group">
+              <label for="meetingUrl"
+                >https://meet.google.com/oim-zcgs-iwe</label
+              >
+              <input type="url" id="meetingUrl" name="meetingUrl" required />
+            </div>
+            <div class="form-group">
+              <label for="botName">Bot Name (Optional):</label>
+              <input
+                type="text"
+                id="botName"
+                name="botName"
+                placeholder="Meeting Notetaker"
+              />
+            </div>
+
+            <hr style="margin: 20px 0" />
+            <h3 style="margin-bottom: 10px">
+              Real-time Streaming Event Subscriptions
+            </h3>
+
+            <div id="realtimeEventsSection" class="form-group">
+              <div class="form-group">
+                <span class="event-group-label">Mixed Audio:</span>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_audio_mixed_raw_data"
+                    value="audio_mixed_raw.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label for="event_audio_mixed_raw_data" class="checkbox-label"
+                    >audio_mixed_raw.data</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label">Transcripts:</span>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_transcript_data"
+                    value="transcript.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label for="event_transcript_data" class="checkbox-label"
+                    >transcript.data (Full)</label
+                  >
+                </div>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_transcript_partial_data"
+                    value="transcript.partial_data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_transcript_partial_data"
+                    class="checkbox-label"
+                    >transcript.partial_data (Partial)</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label"
+                  >Separate Participant Video (PNG):</span
+                >
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_video_separate_png_data"
+                    value="video_separate_png.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_video_separate_png_data"
+                    class="checkbox-label"
+                    >video_separate_png.data</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label"
+                  >Separate Participant Audio (RAW PCM):</span
+                >
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_audio_separate_raw_data"
+                    value="audio_separate_raw.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_audio_separate_raw_data"
+                    class="checkbox-label"
+                    >audio_separate_raw.data</label
+                  >
+                </div>
+              </div>
+
+              <div id="realtimeUrlGroup" class="form-group">
+                <label for="websocketUrl"
+                  >Public WebSocket URL (from ngrok - Required for real-time
+                  events):</label
+                >
+                <input
+                  type="url"
+                  id="websocketUrl"
+                  name="websocketUrl"
+                  placeholder="wss://your-ngrok-domain.ngrok-free.app"
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit">Send Bot</button>
+          </form>
+        </div>
+
+        <div class="logs-column">
+          <div class="log-header">
+            <h2>Real-time Server Logs:</h2>
+          </div>
+          <div id="realTimeLog">Waiting for server events...</div>
+          <button id="toggleAutoScrollBtn" class="action-btn">
+            Pause Auto Scroll
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const sendBotForm = document.getElementById("sendBotForm");
+      const realTimeLog = document.getElementById("realTimeLog");
+      const websocketUrlInput = document.getElementById("websocketUrl");
+      const toggleAutoScrollBtn = document.getElementById(
+        "toggleAutoScrollBtn"
+      );
+      const rtEventCheckboxes = document.querySelectorAll(".rt-event-checkbox");
+
+      let autoScrollEnabled = true;
+
+      toggleAutoScrollBtn.addEventListener("click", () => {
+        autoScrollEnabled = !autoScrollEnabled;
+        if (autoScrollEnabled) {
+          toggleAutoScrollBtn.textContent = "Pause Auto Scroll";
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        } else {
+          toggleAutoScrollBtn.textContent = "Resume Auto Scroll";
+        }
+      });
+
+      sendBotForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        realTimeLog.textContent = "Sending request to Recall.ai API...\n";
+
+        const meetingUrl = document.getElementById("meetingUrl").value;
+        const botName = document.getElementById("botName").value;
+        const wsUrl = websocketUrlInput.value;
+
+        const payload = { meeting_url: meetingUrl };
+        if (botName) {
+          payload.bot_name = botName;
+        }
+
+        const eventsToRequest = [];
+        rtEventCheckboxes.forEach((checkbox) => {
+          if (checkbox.checked) {
+            eventsToRequest.push(checkbox.value);
+          }
+        });
+
+        if (eventsToRequest.length > 0 && !wsUrl) {
+          const errorMsg =
+            "Error: Public WebSocket URL is required when subscribing to real-time events.";
+          console.error(errorMsg);
+          const errorEntry = document.createElement("div");
+          errorEntry.textContent = `[CLIENT VALIDATION] ${errorMsg}`;
+          realTimeLog.appendChild(errorEntry);
+          return;
+        }
+
+        if (eventsToRequest.length > 0) {
+          payload.recording_config = {};
+
+          if (eventsToRequest.includes("audio_mixed_raw.data")) {
+            payload.recording_config.audio_mixed_raw = {};
+          }
+          if (
+            eventsToRequest.includes("transcript.data") ||
+            eventsToRequest.includes("transcript.partial_data")
+          ) {
+            payload.recording_config.transcript = {
+              provider: { meeting_captions: {} },
+            };
+          }
+          if (eventsToRequest.includes("video_separate_png.data")) {
+            payload.recording_config.video_mixed_layout = "gallery_view_v2";
+            payload.recording_config.video_separate_png = {};
+          }
+          if (eventsToRequest.includes("audio_separate_raw.data")) {
+            payload.recording_config.audio_separate_raw = {};
+          }
+
+          payload.recording_config.realtime_endpoints = [
+            {
+              type: "websocket",
+              url: wsUrl,
+              events: eventsToRequest,
+            },
+          ];
+        } else if (wsUrl && wsUrl.trim() !== "") {
+          console.log(
+            "WebSocket URL provided but no real-time events selected. Ignoring WebSocket URL for this request."
+          );
+        }
+
+        console.log("Sending payload:", JSON.stringify(payload, null, 2));
+
+        try {
+          await fetch("/send-bot", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+        } catch (error) {
+          console.error("Error sending bot (fetch failed):", error);
+          const errorEntry = document.createElement("div");
+          errorEntry.textContent =
+            "[NETWORK ERROR] Failed to send request to /send-bot. Check server console.";
+          realTimeLog.appendChild(errorEntry);
+        }
+      });
+
+      const uiSocketProtocol =
+        window.location.protocol === "https:" ? "wss:" : "ws:";
+      const uiSocket = new WebSocket(
+        `${uiSocketProtocol}//${window.location.host}/ui-updates`
+      );
+
+      uiSocket.onopen = () => {
+        const initialEntry = document.createElement("div");
+        initialEntry.textContent =
+          "Connected to server for real-time updates.\n";
+        realTimeLog.appendChild(initialEntry);
+        console.log("UI WebSocket connected");
+        if (autoScrollEnabled) {
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+      };
+
+      uiSocket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const timestamp = `[${new Date(
+            message.timestamp || Date.now()
+          ).toLocaleTimeString()}]`;
+          let logText = message.log;
+          if (message.data) {
+            logText += ` ${
+              typeof message.data === "object"
+                ? JSON.stringify(message.data, null, 2)
+                : message.data
+            }`;
+          }
+
+          const logEntry = document.createElement("div");
+          const timeSpan = document.createElement("span");
+          timeSpan.className = "log-timestamp";
+          timeSpan.textContent = timestamp;
+
+          const textNode = document.createTextNode(logText);
+
+          logEntry.appendChild(timeSpan);
+          logEntry.appendChild(textNode);
+
+          realTimeLog.appendChild(logEntry);
+          if (autoScrollEnabled) {
+            realTimeLog.scrollTop = realTimeLog.scrollHeight;
+          }
+        } catch (e) {
+          console.error(
+            "Error processing UI WebSocket message:",
+            e,
+            event.data
+          );
+          const rawEntry = document.createElement("div");
+          rawEntry.textContent = `[RAW] ${event.data}`;
+          realTimeLog.appendChild(rawEntry);
+          if (autoScrollEnabled) {
+            realTimeLog.scrollTop = realTimeLog.scrollHeight;
+          }
+        }
+      };
+
+      uiSocket.onerror = (error) => {
+        console.error("UI WebSocket Error:", error);
+        const errorEntry = document.createElement("div");
+        errorEntry.textContent =
+          "Error connecting to real-time log server. Check console.\n";
+        realTimeLog.appendChild(errorEntry);
+        if (autoScrollEnabled) {
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+      };
+
+      uiSocket.onclose = () => {
+        console.log("UI WebSocket disconnected");
+        const closeEntry = document.createElement("div");
+        closeEntry.textContent = "Disconnected from real-time log server.\n";
+        realTimeLog.appendChild(closeEntry);
+        if (autoScrollEnabled) {
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+      };
+    </script>
+  </body>
+</html>

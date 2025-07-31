@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recall.ai Flask Starter Kit</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+      .event-group-label {
+        font-weight: 600;
+        margin-top: 15px;
+        margin-bottom: 5px;
+        display: block;
+        color: #333;
+        font-size: 1.1em;
+      }
+      .event-item {
+        margin-left: 20px;
+        margin-bottom: 5px;
+      }
+      .log-timestamp {
+        color: #666;
+        margin-right: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Recall.ai Flask API Starter Kit</h1>
+
+      <div class="main-layout-columns">
+        <div class="form-column">
+          <h2>Send Bot to Meeting</h2>
+          <form id="sendBotForm">
+            <div class="form-group">
+              <label for="meetingUrl">Meeting URL:</label>
+              <input type="url" id="meetingUrl" name="meetingUrl" placeholder="https://meet.google.com/your-meeting-id" required />
+            </div>
+            <div class="form-group">
+              <label for="botName">Bot Name (Optional):</label>
+              <input
+                type="text"
+                id="botName"
+                name="botName"
+                placeholder="Meeting Notetaker"
+              />
+            </div>
+
+            <hr style="margin: 20px 0" />
+            <h3 style="margin-bottom: 10px">
+              Real-time Streaming Event Subscriptions
+            </h3>
+
+            <div id="realtimeEventsSection" class="form-group">
+              <div class="form-group">
+                <span class="event-group-label">Mixed Audio:</span>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_audio_mixed_raw_data"
+                    value="audio_mixed_raw.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label for="event_audio_mixed_raw_data" class="checkbox-label"
+                    >audio_mixed_raw.data</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label">Transcripts:</span>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_transcript_data"
+                    value="transcript.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label for="event_transcript_data" class="checkbox-label"
+                    >transcript.data (Full)</label
+                  >
+                </div>
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_transcript_partial_data"
+                    value="transcript.partial_data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_transcript_partial_data"
+                    class="checkbox-label"
+                    >transcript.partial_data (Partial)</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label"
+                  >Separate Participant Video (PNG):</span
+                >
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_video_separate_png_data"
+                    value="video_separate_png.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_video_separate_png_data"
+                    class="checkbox-label"
+                    >video_separate_png.data</label
+                  >
+                </div>
+              </div>
+
+              <div class="form-group">
+                <span class="event-group-label"
+                  >Separate Participant Audio (RAW PCM):</span
+                >
+                <div class="event-item">
+                  <input
+                    type="checkbox"
+                    id="event_audio_separate_raw_data"
+                    value="audio_separate_raw.data"
+                    class="rt-event-checkbox"
+                  />
+                  <label
+                    for="event_audio_separate_raw_data"
+                    class="checkbox-label"
+                    >audio_separate_raw.data</label
+                  >
+                </div>
+              </div>
+
+              <div id="realtimeUrlGroup" class="form-group">
+                <label for="websocketUrl"
+                  >Public WebSocket URL (from ngrok - Required for real-time
+                  events):</label
+                >
+                <input
+                  type="url"
+                  id="websocketUrl"
+                  name="websocketUrl"
+                  placeholder="wss://your-ngrok-domain.ngrok-free.app"
+                />
+              </div>
+            </div>
+
+            <button type="submit">Send Bot</button>
+          </form>
+        </div>
+
+        <div class="logs-column">
+          <div class="log-header">
+            <h2>Real-time Server Logs:</h2>
+          </div>
+          <div id="realTimeLog">Waiting for server events...</div>
+          <button id="toggleAutoScrollBtn" class="action-btn">
+            Pause Auto Scroll
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Initialize Socket.IO connection
+      const socket = io();
+      
+      const sendBotForm = document.getElementById("sendBotForm");
+      const realTimeLog = document.getElementById("realTimeLog");
+      const websocketUrlInput = document.getElementById("websocketUrl");
+      const toggleAutoScrollBtn = document.getElementById("toggleAutoScrollBtn");
+      const rtEventCheckboxes = document.querySelectorAll(".rt-event-checkbox");
+
+      let autoScrollEnabled = true;
+
+      // Handle Socket.IO messages
+      socket.on('ui_update', function(message) {
+        const timestamp = `[${new Date(message.timestamp || Date.now()).toLocaleTimeString()}]`;
+        let logText = message.log;
+        if (message.data) {
+          logText += ` ${typeof message.data === "object" ? JSON.stringify(message.data, null, 2) : message.data}`;
+        }
+
+        const logEntry = document.createElement("div");
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "log-timestamp";
+        timeSpan.textContent = timestamp;
+
+        const textNode = document.createTextNode(logText);
+
+        logEntry.appendChild(timeSpan);
+        logEntry.appendChild(textNode);
+
+        realTimeLog.appendChild(logEntry);
+        if (autoScrollEnabled) {
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+      });
+
+      socket.on('connect', function() {
+        console.log('Connected to Flask-SocketIO server');
+      });
+
+      socket.on('disconnect', function() {
+        console.log('Disconnected from Flask-SocketIO server');
+      });
+
+      toggleAutoScrollBtn.addEventListener("click", () => {
+        autoScrollEnabled = !autoScrollEnabled;
+        if (autoScrollEnabled) {
+          toggleAutoScrollBtn.textContent = "Pause Auto Scroll";
+          realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        } else {
+          toggleAutoScrollBtn.textContent = "Resume Auto Scroll";
+        }
+      });
+
+      sendBotForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        realTimeLog.textContent = "Sending request to Recall.ai API...\n";
+
+        const meetingUrl = document.getElementById("meetingUrl").value;
+        const botName = document.getElementById("botName").value;
+        const wsUrl = websocketUrlInput.value;
+
+        const payload = { meeting_url: meetingUrl };
+        if (botName) {
+          payload.bot_name = botName;
+        }
+
+        const eventsToRequest = [];
+        rtEventCheckboxes.forEach((checkbox) => {
+          if (checkbox.checked) {
+            eventsToRequest.push(checkbox.value);
+          }
+        });
+
+        if (eventsToRequest.length > 0 && !wsUrl) {
+          const errorMsg = "Error: Public WebSocket URL is required when subscribing to real-time events.";
+          console.error(errorMsg);
+          const errorEntry = document.createElement("div");
+          errorEntry.textContent = `[CLIENT VALIDATION] ${errorMsg}`;
+          realTimeLog.appendChild(errorEntry);
+          return;
+        }
+
+        if (eventsToRequest.length > 0) {
+          payload.recording_config = {};
+
+          if (eventsToRequest.includes("audio_mixed_raw.data")) {
+            payload.recording_config.audio_mixed_raw = {};
+          }
+          if (
+            eventsToRequest.includes("transcript.data") ||
+            eventsToRequest.includes("transcript.partial_data")
+          ) {
+            payload.recording_config.transcript = {
+              provider: { meeting_captions: {} },
+            };
+          }
+          if (eventsToRequest.includes("video_separate_png.data")) {
+            payload.recording_config.video_mixed_layout = "gallery_view_v2";
+            payload.recording_config.video_separate_png = {};
+          }
+          if (eventsToRequest.includes("audio_separate_raw.data")) {
+            payload.recording_config.audio_separate_raw = {};
+          }
+
+          payload.recording_config.realtime_endpoints = [
+            {
+              type: "websocket",
+              url: wsUrl,
+              events: eventsToRequest,
+            },
+          ];
+        } else if (wsUrl && wsUrl.trim() !== "") {
+          console.log("WebSocket URL provided but no real-time events selected. Ignoring WebSocket URL for this request.");
+        }
+
+        console.log("Sending payload:", JSON.stringify(payload, null, 2));
+
+        try {
+          const response = await fetch("/send-bot", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error("Error response:", errorData);
+          }
+        } catch (error) {
+          console.error("Error sending bot (fetch failed):", error);
+          const errorEntry = document.createElement("div");
+          errorEntry.textContent = "[NETWORK ERROR] Failed to send request to /send-bot. Check server console.";
+          realTimeLog.appendChild(errorEntry);
+        }
+      });
+    </script>
+  </body>
+</html>

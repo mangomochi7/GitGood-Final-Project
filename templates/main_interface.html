@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Productivity Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        input, button, textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .send-msg-btn {
+            background: #28a745;
+        }
+        .send-msg-btn:hover {
+            background: #1e7e34;
+        }
+        .logs {
+            height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background: white;
+        }
+        .participants-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .participant-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .score {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .emoji {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="emoji">🧠</span>ML Productivity Tracker</h1>
+            <p>Real-time emotion detection and productivity analysis from meeting participants</p>
+        </div>
+
+        <div class="grid">
+            <!-- Deploy Bot Section -->
+            <div class="card">
+                <h2><span class="emoji">🤖</span>Deploy Bot</h2>
+                <form id="deployForm">
+                    <input type="url" id="meetingUrl" placeholder="https://meet.google.com/your-meeting-id" required>
+                    <input type="text" id="botName" placeholder="ML Processing Bot" value="ML Processing Bot">
+                    <button type="submit">🚀 Deploy Bot & Start Processing</button>
+                </form>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    ⚠️ Make sure ngrok is running on port 3456 and update the WebSocket URL in the code
+                </p>
+            </div>
+
+            <!-- Send Message Section -->
+            <div class="card">
+                <h2><span class="emoji">💬</span>Send Message</h2>
+                <form id="messageForm">
+                    <textarea id="messageText" placeholder="Type your message to participants..." rows="3"></textarea>
+                    <button type="submit" class="send-msg-btn">📤 Send Message</button>
+                </form>
+            </div>
+
+            <!-- Live Participants -->
+            <div class="card full-width">
+                <h2><span class="emoji">👥</span>Live Participants & ML Analysis</h2>
+                <div id="participantsContainer" class="participants-grid">
+                    <div style="text-align: center; color: #666; grid-column: 1 / -1;">
+                        Waiting for participants to join...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Logs -->
+            <div class="card full-width">
+                <h2><span class="emoji">📊</span>Real-time Processing Logs</h2>
+                <div id="logs" class="logs">
+                    <div class="log-entry">System ready - waiting for bot deployment...</div>
+                </div>
+                <button id="clearLogs" style="width: auto; margin-top: 10px;">🗑️ Clear Logs</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO
+        const socket = io();
+        
+        const deployForm = document.getElementById('deployForm');
+        const messageForm = document.getElementById('messageForm');
+        const logs = document.getElementById('logs');
+        const participantsContainer = document.getElementById('participantsContainer');
+        
+        let participants = {};
+
+        // Handle deploy bot form
+        deployForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const meetingUrl = document.getElementById('meetingUrl').value;
+            const botName = document.getElementById('botName').value;
+            
+            try {
+                const response = await fetch('/send-bot', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        meeting_url: meetingUrl,
+                        bot_name: botName
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog('✅ Bot deployed successfully!', 'success');
+                    document.getElementById('meetingUrl').value = '';
+                } else {
+                    addLog(`❌ Deployment failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ Network error: ${error.message}`, 'error');
+            }
+        });
+
+        // Handle send message form
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = document.getElementById('messageText').value;
+            
+            if (!message.trim()) return;
+            
+            try {
+                const response = await fetch('/send-message', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog(`💬 Message sent: "${message}"`, 'message');
+                    document.getElementById('messageText').value = '';
+                } else {
+                    addLog(`❌ Message failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ Message error: ${error.message}`, 'error');
+            }
+        });
+
+        // Socket.IO event handlers
+        socket.on('ui_update', (data) => {
+            addLog(data.log, 'info', data.data);
+            
+            // Update participants if ML data is included
+            if (data.data && data.data.participant) {
+                updateParticipant(data.data);
+            }
+        });
+
+        // Add log entry
+        function addLog(message, type = 'info', data = null) {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            let logText = `[${timestamp}] ${message}`;
+            
+            if (data) {
+                logText += ` ${JSON.stringify(data, null, 1)}`;
+            }
+            
+            logEntry.textContent = logText;
+            
+            // Color coding
+            if (type === 'success') logEntry.style.borderLeftColor = '#28a745';
+            if (type === 'error') logEntry.style.borderLeftColor = '#dc3545';
+            if (type === 'message') logEntry.style.borderLeftColor = '#ffc107';
+            
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // Update participant display
+        function updateParticipant(data) {
+            const participantName = data.participant;
+            
+            if (!participants[participantName]) {
+                participants[participantName] = {};
+            }
+            
+            // Update participant data
+            participants[participantName] = {
+                ...participants[participantName],
+                ...data,
+                lastUpdate: new Date().toLocaleTimeString()
+            };
+            
+            renderParticipants();
+        }
+
+        // Render participants grid
+        function renderParticipants() {
+            if (Object.keys(participants).length === 0) {
+                participantsContainer.innerHTML = '<div style="text-align: center; color: #666; grid-column: 1 / -1;">Waiting for participants to join...</div>';
+                return;
+            }
+            
+            participantsContainer.innerHTML = '';
+            
+            Object.entries(participants).forEach(([name, data]) => {
+                const card = document.createElement('div');
+                card.className = 'participant-card';
+                
+                const productivityScore = data.productivity_score || 0;
+                const emotions = data.emotions || {};
+                const frameQuality = data.frame_quality || 'unknown';
+                
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong>${name}</strong>
+                        <span class="status ${frameQuality === 'good' ? 'active' : 'inactive'}">${frameQuality}</span>
+                    </div>
+                    <div class="score">Productivity: ${(productivityScore * 100).toFixed(1)}%</div>
+                    <div style="margin: 10px 0;">
+                        <div>😊 Happy: ${((emotions.happy || 0) * 100).toFixed(0)}%</div>
+                        <div>🎯 Focused: ${((emotions.focused || 0) * 100).toFixed(0)}%</div>
+                        <div>🤝 Engaged: ${((emotions.engaged || 0) * 100).toFixed(0)}%</div>
+                        <div>😴 Distracted: ${((emotions.distracted || 0) * 100).toFixed(0)}%</div>
+                    </div>
+                    <div style="font-size: 11px; color: #666;">Last update: ${data.lastUpdate}</div>
+                `;
+                
+                participantsContainer.appendChild(card);
+            });
+        }
+
+        // Clear logs button
+        document.getElementById('clearLogs').addEventListener('click', () => {
+            logs.innerHTML = '<div class="log-entry">Logs cleared...</div>';
+        });
+
+        // Fetch participants periodically
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/participants');
+                const data = await response.json();
+                
+                if (data.participants) {
+                    Object.entries(data.participants).forEach(([name, participantData]) => {
+                        updateParticipant({
+                            participant: name,
+                            ...participantData.ml_analysis
+                        });
+                    });
+                }
+            } catch (error) {
+                // Silently fail - don't spam logs
+            }
+        }, 5000);
+
+        // Connection status
+        socket.on('connect', () => {
+            addLog('🔗 Connected to ML Processing System', 'success');
+        });
+
+        socket.on('disconnect', () => {
+            addLog('🔌 Disconnected from server', 'error');
+        });
+    </script>
+</body>
+</html>
