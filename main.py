@@ -4,7 +4,7 @@ import math as m
 import mediapipe as mp
 from posture_processing import *
 import numpy as np
-from database import *
+from posture_database import *
 from utils import *
 
 db = database()
@@ -55,7 +55,7 @@ while camera_video.isOpened():
             if not db.get_triggered():
                 db.set_triggered(True)
                 db.update_time()  # Start timing the change
-            elif time.time() - db.get_time() > 5:
+            elif time.time() - db.get_time() > 10:
                 db.update_last_status()
                 print(db.get_main_status())
                 db.set_triggered(False)

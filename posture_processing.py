@@ -1,9 +1,9 @@
 import numpy as np
 import math
-from database import *
+from posture_database import *
 from utils import *
 import mediapipe as mp
-from database import database
+from posture_database import database
 
 SHOULDER_ANGLE_THRESHOLD = 7
 THRESHOLD_RATIO = 0.4
