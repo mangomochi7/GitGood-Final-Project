@@ -384,3 +384,24 @@ if __name__ == '__main__':
     
     # Start Flask app with SocketIO
     socketio.run(app, host='0.0.0.0', port=FLASK_PORT, debug=False)
+
+def send_zoom_message(message, person_id):
+
+    bot_id = "bot-id"  # replace with the actual bot ID
+    token = "token"  # same thing 
+    
+    url = f"https://us-east-1.recall.ai/api/v1/bot/{bot_id}/send_chat_message/"
+    
+    headers = {
+        'Authorization': token,
+        'accept': 'application/json',
+        'content-type': 'application/json'
+    }
+    
+    data = {
+        "to": person_id,
+        "message": message
+    }
+    
+    response = requests.post(url, headers=headers, json=data)
+    return response.json()
