@@ -17,3 +17,7 @@ recordings/*
 
 # Screenshots
 screenshots/*
+
+transcripts/*
+
+__pycache__/*
