@@ -25,7 +25,7 @@ camera_video.set(3, 880)  # Set camera frame width to 880px
 camera_video.set(4, 660)  # Set camera frame height to 660px
 
 # Take live input
-def posture(frame, db, participant_name, trigger_llm_callback=None):
+def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_message=None, bot_id=None):
     # ok, frame = camera_video.read()
     # if not ok:
     #     continue
@@ -69,8 +69,9 @@ def posture(frame, db, participant_name, trigger_llm_callback=None):
                 db.update_last_status()
                 db.set_triggered(False)
                 if trigger_llm_callback:
-                    trigger_llm_callback("", db.get_main_status(), participant_name)
-                print(main_status)
+                    mess  = trigger_llm_callback("", db.get_main_status(), participant_name)
+                    send_zoom_message(mess, bot_id)
+            
         else:
             db.set_triggered(False)
         
@@ -109,6 +110,6 @@ def posture(frame, db, participant_name, trigger_llm_callback=None):
     # Wait for 'q' key to exit the loop
     # if cv2.waitKey(1) & 0xFF == ord('q'):
     #     break
-
+    print(main_status)
 # camera_video.release()
 # cv2.destroyAllWindows()

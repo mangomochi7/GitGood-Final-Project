@@ -31,13 +31,16 @@ def get_emotion(frame, counter):
 
     # if the previous frame triggered the llm, reset
     if counter.is_triggered():
+        print(f"🔄 Resetting trigger (was triggered last frame)")
         counter.reset_trigger()
 
     # if a negative emotion is detected
     if primary_emotion != 'neutral' and primary_emotion != 'happy':
         counter.negative_emotion() # increase number of consecutive negative frames, set self.negative to True
         frames = counter.get_frames() # gets number of consecutive negative frames
-        if frames >= 5 and counter.get_trigger_cooldown() > 300: # if there have been more than 5 consecutive frames and it has been 300 frames since the last trigger
+        print(f"📊 Negative emotion count: {frames}, Cooldown: {counter.get_trigger_cooldown()}")
+        if frames >= 5 and counter.get_trigger_cooldown() > 10: # if there have been more than 5 consecutive frames and it has been 10 frames since the last trigger
+            print(f"🚨 TRIGGERING! {frames} consecutive negative emotions")
             counter.trigger()
         else:
             counter.not_triggered() # increase frames since last trigger

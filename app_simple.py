@@ -90,7 +90,7 @@ class SimpleEmotionDetector:
                     send_zoom_message(mess, bot_id)
 
             # Analyze posture
-            posture(bgr_image, db, participant_name, trigger_llm_call)
+            #posture(bgr_image, db, participant_name, trigger_llm_call, send_zoom_message, bot_id)
 
             # Store participant data
             self.participants[participant_id] = {
@@ -442,24 +442,53 @@ def get_transcript_context(persistent_emotion_time_stamps, context_length=120):
                         # Extract speaker name: between "FINAL " and ": "
                         name_part = line.split('🔴 FINAL ')[1].split(': ')[0]
                         
-                        # Extract and parse the JSON data
-                        json_part = line.split(': [', 1)[1]  # Everything after ": ["
-                        json_data = json.loads('[' + json_part)  # Add back the opening [
-                        
-                        # Extract the actual text from the JSON
-                        if json_data and isinstance(json_data, list) and len(json_data) > 0:
-                            text_content = json_data[0].get('text', '')
+                        # Extract the JSON part after ": ["
+                        if ': [' in line:
+                            json_part = line.split(': [', 1)[1]  # Everything after ": ["
                             
-                            # Check if this transcript is within our context window
-                            time_diff = abs((emotion_timestamp - transcript_time).total_seconds())
+                            # Try to parse the JSON - handle both single and double quotes
+                            try:
+                                # First try parsing as-is
+                                json_data = json.loads('[' + json_part)
+                            except json.JSONDecodeError:
+                                try:
+                                    # If that fails, try converting single quotes to double quotes
+                                    fixed_json = '[' + json_part.replace("'", '"')
+                                    json_data = json.loads(fixed_json)
+                                except json.JSONDecodeError:
+                                    # If still fails, skip this line
+                                    print(f"⚠️ Could not parse JSON in line: {line[:80]}...")
+                                    continue
                             
-                            if time_diff <= context_length:
-                                relevant_entries.append({
-                                    'timestamp': transcript_time,
-                                    'speaker': name_part,
-                                    'text': text_content,
-                                    'time_diff': time_diff
-                                })
+                            # Extract the actual text from the JSON
+                            if json_data and isinstance(json_data, list) and len(json_data) > 0:
+                                text_content = json_data[0].get('text', '')
+                                
+                                # Check if this transcript is within our context window
+                                time_diff = abs((emotion_timestamp - transcript_time).total_seconds())
+                                
+                                if time_diff <= context_length:
+                                    relevant_entries.append({
+                                        'timestamp': transcript_time,
+                                        'speaker': name_part,
+                                        'text': text_content,
+                                        'time_diff': time_diff
+                                    })
+                        else:
+                            # Handle simpler format without JSON (just plain text after ": ")
+                            if ': ' in line:
+                                text_content = line.split(': ', 2)[-1].strip()  # Get everything after ": "
+                                
+                                # Check if this transcript is within our context window
+                                time_diff = abs((emotion_timestamp - transcript_time).total_seconds())
+                                
+                                if time_diff <= context_length:
+                                    relevant_entries.append({
+                                        'timestamp': transcript_time,
+                                        'speaker': name_part,
+                                        'text': text_content,
+                                        'time_diff': time_diff
+                                    })
                                 
                 except Exception as e:
                     print(f"⚠️ Could not parse line: {line[:50]}... Error: {e}")
