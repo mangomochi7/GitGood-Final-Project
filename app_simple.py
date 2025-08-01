@@ -45,11 +45,12 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 db = database()
-counter = EmotionCounter()
+# Remove global counter - we'll create per-participant counters
 
 class SimpleEmotionDetector:
     def __init__(self):
         self.participants = {}
+        self.emotion_counters = {}  # Store per-participant emotion counters
     
     def process_frame(self, participant_id, participant_name, image_array, frame_timestamp=None):
         """Process a video frame and detect emotions"""
@@ -65,6 +66,10 @@ class SimpleEmotionDetector:
             # Convert RGB to BGR for OpenCV (OpenCV expects BGR format)
             bgr_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
             
+            # Get or create emotion counter for this participant
+            if participant_id not in self.emotion_counters:
+                self.emotion_counters[participant_id] = EmotionCounter()
+            counter = self.emotion_counters[participant_id]
             
             # Detect emotions
             primary_emotion = get_emotion(bgr_image, counter)
@@ -87,10 +92,10 @@ class SimpleEmotionDetector:
                     context_window = get_transcript_context([datetime.now()])
                     context_text = list(context_window.values())[0] if context_window else ""
                     mess = trigger_llm_call(context_text, "Feeling a bad emotion", participant_name)
-                    send_zoom_message(mess, bot_id)
+                    send_zoom_message(mess, bot_id, participant_id)
 
             # Analyze posture
-            #posture(bgr_image, db, participant_name, trigger_llm_call, send_zoom_message, bot_id)
+            posture(bgr_image, db, participant_name, trigger_llm_call, send_zoom_message, bot_id, participant_id)
 
             # Store participant data
             self.participants[participant_id] = {

@@ -39,7 +39,7 @@ def get_emotion(frame, counter):
         counter.negative_emotion() # increase number of consecutive negative frames, set self.negative to True
         frames = counter.get_frames() # gets number of consecutive negative frames
         print(f"📊 Negative emotion count: {frames}, Cooldown: {counter.get_trigger_cooldown()}")
-        if frames >= 5 and counter.get_trigger_cooldown() > 10: # if there have been more than 5 consecutive frames and it has been 10 frames since the last trigger
+        if frames >= 5 and counter.get_trigger_cooldown() > 600: # if there have been more than 5 consecutive frames and it has been 10 frames since the last trigger
             print(f"🚨 TRIGGERING! {frames} consecutive negative emotions")
             counter.trigger()
         else:

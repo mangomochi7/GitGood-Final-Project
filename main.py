@@ -25,7 +25,7 @@ camera_video.set(3, 880)  # Set camera frame width to 880px
 camera_video.set(4, 660)  # Set camera frame height to 660px
 
 # Take live input
-def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_message=None, bot_id=None):
+def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_message=None, bot_id=None, participant_id=None):
     # ok, frame = camera_video.read()
     # if not ok:
     #     continue
@@ -35,6 +35,9 @@ def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_me
     
     # Process the frame & detect landmarks
     results_pose = pose_video.process(rgb_frame)
+    
+    # Initialize main_status to avoid variable scope issues
+    main_status = "No pose detected"
 
     if results_pose.pose_landmarks:
         # mp_drawing.draw_landmarks(frame, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
@@ -54,7 +57,9 @@ def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_me
         # Ultimate Posture Warning
         if db.get_main_status() != "Great Posture! Keep it up!":
             if  not db.get_ultimate_warning() and time.time() - db.get_time_bad_posture() > 60:
-                print("EMERGENCY ALERT. TERRIBLE TERRIBLE POSTURE FOR TOO LONG. LIFE THREATENING. FIX OR ELSE")
+                if trigger_llm_callback:
+                    mess  = trigger_llm_callback("", "EMERGENCY ALERT. TERRIBLE TERRIBLE POSTURE FOR TOO LONG. LIFE THREATENING. FIX OR ELSE", participant_name)
+                    send_zoom_message(mess, bot_id)
                 db.set_ultimate_warning(True)
         else:
             db.set_ultimate_warning(False)
@@ -70,7 +75,7 @@ def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_me
                 db.set_triggered(False)
                 if trigger_llm_callback:
                     mess  = trigger_llm_callback("", db.get_main_status(), participant_name)
-                    send_zoom_message(mess, bot_id)
+                    send_zoom_message(mess, bot_id, participant_id)  # Send DM to specific participant
             
         else:
             db.set_triggered(False)
@@ -110,6 +115,6 @@ def posture(frame, db, participant_name, trigger_llm_callback=None, send_zoom_me
     # Wait for 'q' key to exit the loop
     # if cv2.waitKey(1) & 0xFF == ord('q'):
     #     break
-    print(main_status)
+    print(main_status)    
 # camera_video.release()
 # cv2.destroyAllWindows()
