@@ -31,7 +31,7 @@ from main import *
 from posture_database import database
 from emotion_by_images import get_emotion
 from emotion_by_images import EmotionCounter
-import google.generativeai as genai
+from google import genai
 
 # Configuration
 RECALL_API_KEY = os.getenv('RECALL_API_KEY', '11e4159cb943ded9085f5a8f1ab691c21af45d67')  # Get from env or use default
@@ -68,10 +68,26 @@ class SimpleEmotionDetector:
             
             # Detect emotions
             primary_emotion = get_emotion(bgr_image, counter)
-            if counter.is_triggered():
-                context_window = get_transcript_context(frame_timestamp)
-                mess = trigger_llm_call(context_window, "Feeling a bad emotion", participant_name)
-                send_zoom_message(mess, bot_id)
+            print(f"🔍 Emotion: {primary_emotion}, Triggered: {counter.isTriggered()}")
+            if counter.isTriggered():
+                print(f"🚨 TRIGGER DETECTED! bot_id is: {bot_id}")
+                if bot_id is None:
+                    print("⚠️ WARNING: bot_id is None! Cannot send message.")
+                    return primary_emotion
+                # Convert frame_timestamp string to datetime and put in list
+                try:
+                    timestamp_dt = datetime.fromisoformat(frame_timestamp.replace('Z', '+00:00')) if frame_timestamp else datetime.now()
+                    context_window = get_transcript_context([timestamp_dt])
+                    # Get the context text (it returns a dict, we want the first value)
+                    context_text = list(context_window.values())[0] if context_window else ""
+                    mess = trigger_llm_call(context_text, "Feeling a bad emotion", participant_name)
+                    send_zoom_message(mess, bot_id)
+                except Exception as e:
+                    print(f"⚠️ Error with timestamp conversion, using current time: {e}")
+                    context_window = get_transcript_context([datetime.now()])
+                    context_text = list(context_window.values())[0] if context_window else ""
+                    mess = trigger_llm_call(context_text, "Feeling a bad emotion", participant_name)
+                    send_zoom_message(mess, bot_id)
 
             # Analyze posture
             posture(bgr_image, db, participant_name, trigger_llm_call)
@@ -392,6 +408,7 @@ def get_transcript_context(persistent_emotion_time_stamps, context_length=120):
     Parses the JSON format in your transcript file
     timestamp example: 2025-07-31T13:50:40
     """
+    print("\n🔍 Getting transcript context for persistent emotions")
     try:
         transcript_file = "transcripts/meeting_transcript.txt"
         
@@ -483,9 +500,10 @@ def get_transcript_context(persistent_emotion_time_stamps, context_length=120):
 def trigger_llm_call(context_window, participant_problems, name):
     #this method will be called when there is a persistent emotion/posture problem 
     # The client gets the API key from the environment variable `GEMINI_API_KEY`.
+    print(f"\n🔍 Triggering LLM call for {name} with context window")
     client = genai.Client()
 
-    prompt = "You are a helpful assistant, and your job is to respond in a natural, conversational way that fits the situation. If the issue is an emotion, offer encouragement and positivity when it’s a good feeling, or be supportive and constructive if it’s a negative one, look at the meeting context and try to understand what went wrong and offer help. If the issue is posture, gently encourage focus when the person seems disengaged, or reinforce their interest and energy when they appear engaged. You can also offer advice to fix the person’s posture. Keep your response short (1–3 sentences), sound like a teammate rather than an AI, and avoid overused or AI words and phrases. \n\n"
+    prompt = "You are a helpful google meet/zoom assistant you will get notifications if people are feeling down or have bad posture, your goal is to maximize productivity with these particpants, and your job is to respond in a natural, conversational way that fits the situation. If the issue is an emotion, offer encouragement and positivity when it’s a good feeling, or be supportive and constructive if it’s a negative one, look at the meeting context and try to understand what went wrong and offer help. If the issue is posture, gently encourage focus when the person seems disengaged, or reinforce their interest and energy when they appear engaged. You can also offer advice to fix the person’s posture. Keep your response short (1–3 sentences), sound like a teammate rather than an AI, and avoid overused or AI words and phrases. \n\n"
     if context_window != "":
         prompt += "Here is the last two minutes of meeting transcript/context: " + context_window + "\n\n"
 
@@ -494,18 +512,19 @@ def trigger_llm_call(context_window, participant_problems, name):
     response = client.models.generate_content(
     model="gemini-2.5-flash", contents = prompt)
 
+    print("💬 LLM Response created: " + response.text)
     return response.text
 
 def send_zoom_message(message, bot_id, person_id = None):
 
-    
+    print("trying to send zoom message")
     bot_id = f"{bot_id}"  # replace with the actual bot ID
     token = os.getenv('RECALL_API_KEY', '11e4159cb943ded9085f5a8f1ab691c21af45d67') 
 
-    url = f"https://us-west-2.recall.ai/api/v1/bot/%7Bbot_id%7D/send_chat_message/"
+    url = f"https://us-west-2.recall.ai/api/v1/bot/{bot_id}/send_chat_message/"
 
     headers = {
-        'Authorization': token,
+        'Authorization': f'Token {token}',  # Fixed: Added "Token " prefix
         'accept': 'application/json',
         'content-type': 'application/json'
     }
@@ -516,12 +535,17 @@ def send_zoom_message(message, bot_id, person_id = None):
         }
 
         response = requests.post(url, headers=headers, json=data)
+        print(f"✅ Message sent to {person_id}: {response.status_code}")
         return response.json()
     
     data = {
         "message": message
     }
     response = requests.post(url, headers=headers, json=data)
+
+    print(f"✅ Message sent to all: {response.status_code}")
+    if response.status_code != 200:
+        print(f"❌ Error response: {response.text}")
     return response.json()
 
 if __name__ == '__main__':

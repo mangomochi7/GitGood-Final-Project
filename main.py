@@ -70,6 +70,7 @@ def posture(frame, db, participant_name, trigger_llm_callback=None):
                 db.set_triggered(False)
                 if trigger_llm_callback:
                     trigger_llm_callback("", db.get_main_status(), participant_name)
+                print(main_status)
         else:
             db.set_triggered(False)
         
@@ -108,7 +109,6 @@ def posture(frame, db, participant_name, trigger_llm_callback=None):
     # Wait for 'q' key to exit the loop
     # if cv2.waitKey(1) & 0xFF == ord('q'):
     #     break
-    print(main_status)
 
 # camera_video.release()
 # cv2.destroyAllWindows()

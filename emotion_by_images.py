@@ -1,7 +1,7 @@
 import cv2
 from deepface import DeepFace
 
-def get_emotion(frame, db):
+def get_emotion(frame, counter):
     # Load face cascade classifier
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
@@ -30,20 +30,20 @@ def get_emotion(frame, db):
     primary_emotion = emotions[0] if emotions else 'neutral'
 
     # if the previous frame triggered the llm, reset
-    if db.is_triggered():
-        db.reset_trigger()
+    if counter.is_triggered():
+        counter.reset_trigger()
 
     # if a negative emotion is detected
     if primary_emotion != 'neutral' and primary_emotion != 'happy':
-        db.negative_emotion() # increase number of consecutive negative frames, set self.negative to True
-        frames = db.get_frames() # gets number of consecutive negative frames
-        if frames >= 5 and db.get_trigger_cooldown() > 300: # if there have been more than 5 consecutive frames and it has been 300 frames since the last trigger
-            db.trigger()
+        counter.negative_emotion() # increase number of consecutive negative frames, set self.negative to True
+        frames = counter.get_frames() # gets number of consecutive negative frames
+        if frames >= 5 and counter.get_trigger_cooldown() > 300: # if there have been more than 5 consecutive frames and it has been 300 frames since the last trigger
+            counter.trigger()
         else:
-            db.not_triggered() # increase frames since last trigger
+            counter.not_triggered() # increase frames since last trigger
     else: # a non-negative emotion is detected
-        db.negative_end() # self.negative is False, consecutive negative frames set to 0
-        db.not_triggered()
+        counter.negative_end() # self.negative is False, consecutive negative frames set to 0
+        counter.not_triggered()
 
     return primary_emotion
 
@@ -72,6 +72,9 @@ class EmotionCounter:
         self.frames_since_trigger = 0
 
     def is_triggered(self):
+        return self.triggered
+
+    def isTriggered(self):
         return self.triggered
 
     def reset_trigger(self):
