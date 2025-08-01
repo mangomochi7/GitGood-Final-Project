@@ -1,7 +1,7 @@
 import cv2
 from deepface import DeepFace
 
-def get_emotion(frame):
+def get_emotion(frame, db):
     # Load face cascade classifier
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
@@ -27,6 +27,60 @@ def get_emotion(frame):
 
         emotions.append(emotion)
 
-    return emotions
+    primary_emotion = emotions[0] if emotions else 'neutral'
+
+    # if the previous frame triggered the llm, reset
+    if db.is_triggered():
+        db.reset_trigger()
+
+    # if a negative emotion is detected
+    if primary_emotion != 'neutral' and primary_emotion != 'happy':
+        db.negative_emotion() # increase number of consecutive negative frames, set self.negative to True
+        frames = db.get_frames() # gets number of consecutive negative frames
+        if frames >= 5 and db.get_trigger_cooldown() > 300: # if there have been more than 5 consecutive frames and it has been 300 frames since the last trigger
+            db.trigger()
+        else:
+            db.not_triggered() # increase frames since last trigger
+    else: # a non-negative emotion is detected
+        db.negative_end() # self.negative is False, consecutive negative frames set to 0
+        db.not_triggered()
+
+    return primary_emotion
 
 
+class EmotionCounter:
+
+    def __init__(self):
+        self.negative_frames = 0
+        self.negative = False
+        self.triggered = False
+        self.frames_since_trigger = 0
+
+    def negative_emotion(self):
+        self.negative_frames += 1
+        self.negative = True
+
+    def get_frames(self):
+        return self.negative_frames
+
+    def negative_end(self):
+        self.negative = False
+        self.negative_frames = 0
+
+    def trigger(self):
+        self.triggered = True
+        self.frames_since_trigger = 0
+
+    def is_triggered(self):
+        return self.triggered
+
+    def reset_trigger(self):
+        self.triggered = False
+
+    def not_triggered(self):
+        self.frames_since_trigger += 1
+
+    def get_trigger_cooldown(self):
+        return self.frames_since_trigger
+
+    

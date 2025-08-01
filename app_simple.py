@@ -13,6 +13,10 @@ import hashlib
 import struct
 import threading
 import zlib  # Add zlib for decompression
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 import asyncio
 import websockets  # Use proper WebSocket library like Node.js ws
 from flask import Flask, render_template, request, jsonify
@@ -23,30 +27,31 @@ import numpy as np
 import cv2
 from datetime import datetime
 import io
-
-# Try to import emotion detection
-try:
-    from emotion_by_images import get_emotion
-    print("✅ Emotion detection loaded")
-except ImportError:
-    print("⚠️  Using placeholder emotions")
-    def get_emotion(frame):
-        import random
-        return [random.choice(['happy', 'neutral', 'sad', 'angry', 'surprise'])]
+from main import *
+from posture_database import database
+from emotion_by_images import get_emotion
+from emotion_by_images import EmotionCounter
+import google.generativeai as genai
 
 # Configuration
 RECALL_API_KEY = os.getenv('RECALL_API_KEY', '11e4159cb943ded9085f5a8f1ab691c21af45d67')  # Get from env or use default
 WEBSOCKET_PORT = 3456
 FLASK_PORT = 5000
 
+# Global variable to store bot_id from Recall.ai API response
+bot_id = None
+
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+db = database()
+counter = EmotionCounter()
 
 class SimpleEmotionDetector:
     def __init__(self):
         self.participants = {}
     
-    def process_frame(self, participant_id, participant_name, image_array):
+    def process_frame(self, participant_id, participant_name, image_array, frame_timestamp=None):
         """Process a video frame and detect emotions"""
         try:
             print(f"\n🎯 PROCESSING: {participant_name}")
@@ -60,14 +65,22 @@ class SimpleEmotionDetector:
             # Convert RGB to BGR for OpenCV (OpenCV expects BGR format)
             bgr_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
             
-            # Detect emotions
-            emotions = get_emotion(bgr_image)
-            primary_emotion = emotions[0] if emotions else 'neutral'
             
+            # Detect emotions
+            primary_emotion = get_emotion(bgr_image, counter)
+            if counter.is_triggered():
+                context_window = get_transcript_context(frame_timestamp)
+                mess = trigger_llm_call(context_window, "Feeling a bad emotion", participant_name)
+                send_zoom_message(mess, bot_id)
+
+            # Analyze posture
+            posture(bgr_image, db, participant_name, trigger_llm_call)
+
             # Store participant data
             self.participants[participant_id] = {
                 'name': participant_name,
                 'emotion': primary_emotion,
+                'posture_status': db.get_main_status(),
                 'last_updated': datetime.now()
             }
             
@@ -123,8 +136,10 @@ def handle_recall_message(message_data):
                 # Convert RGBA to RGB by removing alpha channel
                 image_array = image_array[:, :, :3]
             
+            frame_timestamp = message_data['data']['data'].get('timestamp', datetime.now().isoformat())
+
             # Process the frame
-            emotion = detector.process_frame(participant_id, participant_name, image_array)
+            emotion = detector.process_frame(participant_id, participant_name, image_array, frame_timestamp=frame_timestamp)
             
             print(f"✅ SUCCESS: {participant_name} -> {emotion}")
             
@@ -322,7 +337,14 @@ def send_bot():
         if response.status_code == 200 or response.status_code == 201:
             success_msg = f"✅ Successfully sent bot to meeting!"
             print(success_msg)
-            return jsonify(response.json()), response.status_code
+            
+            # Capture bot_id from response
+            global bot_id
+            response_data = response.json()
+            bot_id = response_data.get('id')
+            print(f"🤖 Bot ID captured: {bot_id}")
+            
+            return jsonify(response_data), response.status_code
         else:
             error_msg = response.json() if response.content else response.text
             print(f"❌ Recall.ai API Error: {response.status_code} - {error_msg}")
@@ -363,6 +385,144 @@ def handle_get_participants():
         'participants': detector.participants,
         'total': len(detector.participants)
     })
+
+def get_transcript_context(persistent_emotion_time_stamps, context_length=120):
+    """
+    Get transcript context around persistent emotion timestamps
+    Parses the JSON format in your transcript file
+    timestamp example: 2025-07-31T13:50:40
+    """
+    try:
+        transcript_file = "transcripts/meeting_transcript.txt"
+        
+        if not os.path.exists(transcript_file):
+            print("⚠️ No transcript file found")
+            return {}
+        
+        # Read all transcript entries
+        with open(transcript_file, 'r', encoding='utf-8') as f:
+            transcript_lines = f.readlines()
+        
+        context_windows = {}
+        
+        for emotion_timestamp in persistent_emotion_time_stamps:
+            print(f"🔍 Getting context for emotion at: {emotion_timestamp}")
+            
+            relevant_entries = []
+            
+            for line in transcript_lines:
+                try:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Parse the line format: [timestamp] 🔴 FINAL Name: [JSON data]
+                    if '[' in line and '] 🔴 FINAL' in line:
+                        # Extract the timestamp from the beginning: [2025-07-31T13:50:19.388127]
+                        timestamp_str = line.split(']')[0][1:]  # Remove [ and ]
+                        transcript_time = datetime.fromisoformat(timestamp_str)
+                        
+                        # Extract speaker name: between "FINAL " and ": "
+                        name_part = line.split('🔴 FINAL ')[1].split(': ')[0]
+                        
+                        # Extract and parse the JSON data
+                        json_part = line.split(': [', 1)[1]  # Everything after ": ["
+                        json_data = json.loads('[' + json_part)  # Add back the opening [
+                        
+                        # Extract the actual text from the JSON
+                        if json_data and isinstance(json_data, list) and len(json_data) > 0:
+                            text_content = json_data[0].get('text', '')
+                            
+                            # Check if this transcript is within our context window
+                            time_diff = abs((emotion_timestamp - transcript_time).total_seconds())
+                            
+                            if time_diff <= context_length:
+                                relevant_entries.append({
+                                    'timestamp': transcript_time,
+                                    'speaker': name_part,
+                                    'text': text_content,
+                                    'time_diff': time_diff
+                                })
+                                
+                except Exception as e:
+                    print(f"⚠️ Could not parse line: {line[:50]}... Error: {e}")
+                    continue
+            
+            # Sort by timestamp
+            relevant_entries.sort(key=lambda x: x['timestamp'])
+            
+            # Create clean context text
+            context_lines = []
+            for entry in relevant_entries:
+                time_str = entry['timestamp'].strftime('%H:%M:%S')
+                context_lines.append(f"[{time_str}] {entry['speaker']}: {entry['text']}")
+            
+            context_text = '\n'.join(context_lines)
+            context_windows[emotion_timestamp.isoformat()] = context_text
+            
+            print(f"📝 Found {len(relevant_entries)} relevant transcript entries")
+        
+        # Save context windows to file
+        context_file = "context_windows.txt"
+        with open(context_file, 'w', encoding='utf-8') as f:
+            f.write("=== EMOTION CONTEXT WINDOWS ===\n\n")
+            for timestamp, context in context_windows.items():
+                f.write(f"🕒 EMOTION TIMESTAMP: {timestamp}\n")
+                f.write(f"📝 CONTEXT ({context_length}s window):\n")
+                f.write(context)
+                f.write("\n" + "="*80 + "\n\n")
+        
+        print(f"💾 Context windows saved to: {context_file}")
+        return context_windows
+        
+    except Exception as e:
+        print(f"❌ Error getting transcript context: {e}")
+        return {}
+
+
+def trigger_llm_call(context_window, participant_problems, name):
+    #this method will be called when there is a persistent emotion/posture problem 
+    # The client gets the API key from the environment variable `GEMINI_API_KEY`.
+    client = genai.Client()
+
+    prompt = "You are a helpful assistant, and your job is to respond in a natural, conversational way that fits the situation. If the issue is an emotion, offer encouragement and positivity when it’s a good feeling, or be supportive and constructive if it’s a negative one, look at the meeting context and try to understand what went wrong and offer help. If the issue is posture, gently encourage focus when the person seems disengaged, or reinforce their interest and energy when they appear engaged. You can also offer advice to fix the person’s posture. Keep your response short (1–3 sentences), sound like a teammate rather than an AI, and avoid overused or AI words and phrases. \n\n"
+    if context_window != "":
+        prompt += "Here is the last two minutes of meeting transcript/context: " + context_window + "\n\n"
+
+    prompt += "Here is the problem that " + name + " is having: " + participant_problems + "\n\n"
+
+    response = client.models.generate_content(
+    model="gemini-2.5-flash", contents = prompt)
+
+    return response.text
+
+def send_zoom_message(message, bot_id, person_id = None):
+
+    
+    bot_id = f"{bot_id}"  # replace with the actual bot ID
+    token = os.getenv('RECALL_API_KEY', '11e4159cb943ded9085f5a8f1ab691c21af45d67') 
+
+    url = f"https://us-west-2.recall.ai/api/v1/bot/%7Bbot_id%7D/send_chat_message/"
+
+    headers = {
+        'Authorization': token,
+        'accept': 'application/json',
+        'content-type': 'application/json'
+    }
+    if person_id != None:
+        data = {
+            "to": person_id,
+            "message": message
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+    
+    data = {
+        "message": message
+    }
+    response = requests.post(url, headers=headers, json=data)
+    return response.json()
 
 if __name__ == '__main__':
     print("\n" + "="*60)

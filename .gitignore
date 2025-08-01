@@ -13,11 +13,11 @@ yarn-debug.log*
 yarn-error.log*
 
 # Recordings
-recordings/*
+recordings
 
 # Screenshots
-screenshots/*
+screenshots
 
-transcripts/*
+transcripts
 
-__pycache__/*
+__pycache__

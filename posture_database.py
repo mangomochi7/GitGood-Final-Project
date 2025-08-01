@@ -15,16 +15,21 @@ class database:
         self.shoulder_angle = None
         self.mouth = None
         self.time = time.time()
-    
+
+        self.time_bad_posture = time.time()
+
         self.status_tilt = False
         self.status_sm_dist = False
         self.last_status_tilt = False
         self.last_status_sm_dist = False
 
         self.triggered = False
+        self.ultimate_warning = False
 
         self.main_status = "Great Posture! Keep it up!"
         self.color = (0, 0, 255)  # BGR
+
+        self.counter = 0
 
     def calculateValues(self, landmarks, pose_landmarks, mp_pose, frame):
         self.left_shoulder = give_coords((pose_landmarks.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER]), frame)
@@ -86,6 +91,12 @@ class database:
     def get_time(self):
         return self.time
     
+    def update_time_bad_posture(self):
+        self.time_bad_posture = time.time()
+
+    def get_time_bad_posture(self):
+        return self.time_bad_posture
+    
     def get_last_status_sm_dist(self):
         return self.last_status_sm_dist
     
@@ -94,3 +105,15 @@ class database:
     
     def get_main_status(self):
         return self.main_status
+    
+    def set_ultimate_warning(self, boolean):
+        self.ultimate_warning = boolean
+
+    def get_ultimate_warning(self):
+        return self.ultimate_warning
+    
+    def add_counter(self):
+        self.counter +=1
+    
+    def reset_counter(self):
+        self.counter = 0
